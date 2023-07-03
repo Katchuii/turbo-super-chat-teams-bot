@@ -29,6 +29,10 @@ export class TeamsBot extends TeamsActivityHandler {
   //commandsHelper: CommandsHelper;
   openAiApi: OpenAIApi;
   temperature: number;
+  aoaiModel: string;
+  chatGptSystemContent: string;
+  chatGptMaxToken: number;
+  chatGptTopP: number;
 
   constructor() {
     super();
@@ -47,6 +51,12 @@ export class TeamsBot extends TeamsActivityHandler {
     this.dialog = new SSODialog(new MemoryStorage());
     this.dialogState = this.conversationState.createProperty('DialogState');
 
+    this.temperature = parseInt(process.env.CHATGPT_TEMPERATURE);
+    this.aoaiModel = process.env.AOAI_MODEL;
+    this.chatGptSystemContent = process.env.CHATGPT_SYSTEMCONTENT;
+    this.chatGptMaxToken = parseInt(process.env.CHATGPT_MAXTOKEN);
+    this.chatGptTopP = parseInt(process.env.CHATGPT_TOPP);
+
     this.openAiApi = new OpenAIApi(
       new Configuration({
         apiKey: process.env.AOAI_APIKEY,
@@ -54,7 +64,7 @@ export class TeamsBot extends TeamsActivityHandler {
         azure: {
           apiKey: process.env.AOAI_APIKEY,
           endpoint: process.env.AOAI_ENDPOINT,
-          // deploymentName is optional, if you donot set it, you need to set it in the request parameter
+          // deploymentName is optional, if you do not set it, you need to set it in the request parameter
           deploymentName: process.env.AOAI_MODEL,
         },
       })
@@ -73,38 +83,59 @@ export class TeamsBot extends TeamsActivityHandler {
         txt = removedMentionText.toLowerCase().replace(/\n|\r/g, '').trim();
       }
 
+      if (txt.startsWith('/set temperature')) {
+      }
+
       let revisedprompt = [
         {
           role: ChatCompletionRequestMessageRoleEnum.System,
-          content: process.env.CHATGPT_SYSTEMCONTENT,
+          content: this.chatGptSystemContent,
         },
         { role: ChatCompletionRequestMessageRoleEnum.User, content: txt },
       ];
       console.log(
-        'createChatCompletion request: ' + JSON.stringify(revisedprompt[1].content)
+        'createChatCompletion request: ' +
+          JSON.stringify(revisedprompt[1].content)
       );
       try {
-
         const prompt = JSON.stringify(revisedprompt[1].content);
 
-        if(prompt.startsWith('/set')) {
-          console.log("set new temperature!");
+        let completion;
+
+        if (prompt.includes('/set')) {
+
+          console.log('set new temperature!');
+          const regex = /(\d+\.\d+)/; // Regular expression to match a decimal number
+          const match = prompt.match(regex);
+          const temperature = parseFloat(match[0]);
+          console.log('TEMPERATURE', temperature);
           
+          this.temperature = temperature;
+
+          await context.sendActivity(`you set a new temperature of ${temperature}. you can now continue with your regular prompting`);
+
+        } else {
+          completion = await this.openAiApi.createChatCompletion({
+            model: this.aoaiModel,
+            messages: revisedprompt,
+            temperature: this.temperature,
+            max_tokens: this.chatGptMaxToken,
+            top_p: this.chatGptMaxToken,
+            stop: process.env.CHATGPT_STOPSEQ,
+          });
+
+          console.log(
+            'createChatCompletion response: ' +
+              completion.data.choices[0].message.content
+          );
+
+          console.log('current tempperature is: ', this.temperature);
+
+          await context.sendActivity(completion.data.choices[0].message.content);
         }
 
-        const completion = await this.openAiApi.createChatCompletion({
-          model: process.env.AOAI_MODEL,
-          messages: revisedprompt,
-          temperature: parseInt(process.env.CHATGPT_TEMPERATURE),
-          max_tokens: parseInt(process.env.CHATGPT_MAXTOKEN),
-          top_p: parseInt(process.env.CHATGPT_TOPP),
-          stop: process.env.CHATGPT_STOPSEQ,
-        });
-        console.log(
-          'createChatCompletion response: ' +
-            completion.data.choices[0].message.content
-        );
-        await context.sendActivity(completion.data.choices[0].message.content);
+       
+        
       } catch (error) {
         if (error.response) {
           console.log(error.response.status);
@@ -141,6 +172,7 @@ export class TeamsBot extends TeamsActivityHandler {
       await next();
     });
   }
+  
 
   // Invoked when an action is taken on an Adaptive Card. The Adaptive Card sends an event to the Bot and this
   // method handles that event.
