@@ -20,6 +20,8 @@ import {
 const rawWelcomeCard = require('./adaptiveCards/welcome.json');
 const rawLearnCard = require('./adaptiveCards/learn.json');
 
+import { TeamsFx, TeamsUserCredential } from '@microsoft/teamsfx';
+
 export class TeamsBot extends TeamsActivityHandler {
   likeCountObj: { likeCount: number };
   conversationState: BotState;
@@ -70,6 +72,50 @@ export class TeamsBot extends TeamsActivityHandler {
       })
     );
 
+    function extractDecimalValue(
+      prompt: string,
+      keyword: string
+    ): number | undefined {
+      if (prompt.includes(keyword)) {
+        const regex = /(\d+\.\d+)/;
+        const match = prompt.match(regex);
+        if (match !== null) {
+          const value = parseFloat(match[0]);
+          console.log(keyword.toUpperCase(), value);
+          return value;
+        }
+      }
+      return undefined;
+    }
+
+    function extractIntegerValue(
+      prompt: string,
+      keyword: string
+    ): number | undefined {
+      if (prompt.includes(keyword)) {
+        const regex = /(\d+)/;
+        const match = prompt.match(regex);
+        if (match !== null) {
+          const value = parseInt(match[0]);
+          console.log(keyword.toUpperCase(), value);
+          return value;
+        }
+      }
+      return undefined;
+    }
+
+    function extractStringValue(
+      prompt: string,
+      keyword: string
+    ): string | undefined {
+      if (prompt.includes(keyword)) {
+        const value = prompt.split(keyword)[1].replace(/['"]+/g, '').trim();
+        console.log(keyword.toUpperCase(), value);
+        return value;
+      }
+      return undefined;
+    }
+
     this.onMessage(async (context, next) => {
       console.log('Running with Message Activity.');
 
@@ -81,9 +127,6 @@ export class TeamsBot extends TeamsActivityHandler {
       if (removedMentionText) {
         // Remove the line break
         txt = removedMentionText.toLowerCase().replace(/\n|\r/g, '').trim();
-      }
-
-      if (txt.startsWith('/set temperature')) {
       }
 
       let revisedprompt = [
@@ -102,25 +145,49 @@ export class TeamsBot extends TeamsActivityHandler {
 
         let completion;
 
+        console.log('teamsfx', TeamsFx);
+        console.log('teamsusercredential', TeamsUserCredential);
+
         if (prompt.includes('/set')) {
+          const temperature = extractDecimalValue(prompt, 'temperature');
+          const maxToken = extractIntegerValue(prompt, 'maxtoken');
+          const topP = extractDecimalValue(prompt, 'topp');
+          const newAiModel = extractStringValue(prompt, 'ai model');
+          const systemContent = extractStringValue(prompt, 'system content');
 
-          console.log('set new temperature!');
-          const regex = /(\d+\.\d+)/; // Regular expression to match a decimal number
-          const match = prompt.match(regex);
-          const temperature = parseFloat(match[0]);
-          console.log('TEMPERATURE', temperature);
-          
-          this.temperature = temperature;
-
-          await context.sendActivity(`you set a new temperature of ${temperature}. you can now continue with your regular prompting`);
-
+          if (temperature !== undefined) {
+            this.temperature = temperature;
+            await context.sendActivity(
+              `You set a new temperature of ${temperature}. You can now continue with your regular prompting.`
+            );
+          } else if (maxToken !== undefined) {
+            this.chatGptMaxToken = maxToken;
+            await context.sendActivity(
+              `You set a new maxtoken of ${maxToken}. You can now continue with your regular prompting.`
+            );
+          } else if (topP !== undefined) {
+            this.chatGptTopP = topP;
+            await context.sendActivity(
+              `You set a new topp of ${topP}. You can now continue with your regular prompting.`
+            );
+          } else if (newAiModel !== undefined) {
+            this.aoaiModel = newAiModel;
+            await context.sendActivity(
+              `You set a new model of ${newAiModel}. You can now continue with your regular prompting.`
+            );
+          } else if (systemContent !== undefined) {
+            this.chatGptSystemContent = systemContent;
+            await context.sendActivity(
+              `You set a new system content of ${systemContent}. You can now continue with your regular prompting.`
+            );
+          }
         } else {
           completion = await this.openAiApi.createChatCompletion({
             model: this.aoaiModel,
             messages: revisedprompt,
             temperature: this.temperature,
             max_tokens: this.chatGptMaxToken,
-            top_p: this.chatGptMaxToken,
+            top_p: this.chatGptTopP,
             stop: process.env.CHATGPT_STOPSEQ,
           });
 
@@ -130,18 +197,18 @@ export class TeamsBot extends TeamsActivityHandler {
           );
 
           console.log('current tempperature is: ', this.temperature);
+          console.log('current ai model is: ', this.aoaiModel);
 
-          await context.sendActivity(completion.data.choices[0].message.content);
+          await context.sendActivity(
+            completion.data.choices[0].message.content
+          );
         }
-
-       
-        
       } catch (error) {
         if (error.response) {
-          console.log(error.response.status);
+          console.log('error', error.response.status);
           console.log(error.response.data);
         } else {
-          console.log(error.message);
+          console.log('error', error.message);
         }
       }
 
@@ -172,7 +239,6 @@ export class TeamsBot extends TeamsActivityHandler {
       await next();
     });
   }
-  
 
   // Invoked when an action is taken on an Adaptive Card. The Adaptive Card sends an event to the Bot and this
   // method handles that event.

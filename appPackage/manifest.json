@@ -1,7 +1,7 @@
 {
     "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.14/MicrosoftTeams.schema.json",
     "manifestVersion": "1.14",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "id": "${{TEAMS_APP_ID}}",
     "packageName": "com.microsoft.teams.extension",
     "developer": {
@@ -66,6 +66,7 @@
         "messageTeamMembers"
     ],
     "validDomains": [
+        "${{AAD_APP_OAUTH_AUTHORITY_HOST}}",
         "${{PROVISIONOUTPUT__BOTOUTPUT__VALIDDOMAIN}}"
     ],
     "webApplicationInfo": {
